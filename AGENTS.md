@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository is DSCAN's fork of [projectdiscovery/nuclei-templates](https://github.com/projectdiscovery/nuclei-templates): the nuclei templates the DSCAN scanner runs. For the system picture see the ARCHITECTURE.md of the DSCAN backend.
+This repository is DSCAN's fork of [projectdiscovery/nuclei-templates](https://github.com/projectdiscovery/nuclei-templates): the nuclei templates the DSCAN scanner runs.
 
 ## Layout
 
