@@ -6,7 +6,7 @@ This is not the upstream project. To contribute, report or fix a template, go to
 
 ## How the sync works
 
-The Sync workflow (`.github/workflows/sync.yml`) runs weekly, on Monday at 03:00 UTC, and can be started by hand:
+The Sync workflow (`.github/workflows/sync.yml`) runs daily at 03:00 UTC, and can be started by hand:
 
 1. It copies upstream `main` over this tree, except for the files DSCAN keeps (see below).
 2. `.github/download-prs.py` adds the templates of open upstream pull requests labelled `Done` into `local/`.
