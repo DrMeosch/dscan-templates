@@ -1,0 +1,38 @@
+name: Changelog
+
+# Every pull request body needs a "## Changelog" section (see scripts/check_changelog.py and the pull request
+# template). The job runs the unit tests of the scripts and the check on the body in the event file; the body never
+# goes through a script or expression, so it cannot inject anything.
+#
+# Exempt: bot authors and the sync pull requests (head main or master, sync/*, and the sync-nuclei-templates-*
+# autosync; from the same repository, never from a fork). The script decides (check_changelog.is_exempt, unit
+# tested) from the event file, so the job always runs and reports success or failure: a job-level if: would turn a
+# later `edited` run into "skipped" and hide an earlier failure. Release and hotfix pull requests are not exempt.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+# A new run for the same pull request (a body edit, a push) cancels the one in flight, so the last run is the one
+# that reports.
+concurrency:
+  group: changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: Changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Unit tests of the Changelog check
+        run: PYTHONPATH=scripts python3 -m unittest -v test_check_changelog
+      - name: Unit tests of the changelog feed
+        run: PYTHONPATH=scripts python3 -m unittest -v test_changelog_feed
+      - name: Check the Changelog section of the pull request body
+        run: python3 scripts/check_changelog.py

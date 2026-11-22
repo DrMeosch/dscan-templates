@@ -1,0 +1,84 @@
+name: Sync
+
+permissions: {}
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # Runs weekly, Monday 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the sync branch
+      pull-requests: write # open the [autosync] pull request
+
+    steps:
+    -
+      name: Checkout (destination)
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        path: 'repoB'
+        persist-credentials: true # the push step pushes the sync branch with this token
+
+    -
+      name: Checkout templates
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: projectdiscovery/nuclei-templates
+        ref: 'refs/heads/main'
+        path: 'repoA'
+        persist-credentials: false
+
+    -
+      name: Get Latest Commit Message and ID from RepoA
+      id: repoA_info
+      run: |
+        cd repoA
+        echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        echo "message=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+
+    -
+      name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: '1.26'
+
+    -
+      name: Sync Files from RepoA to RepoB
+      run: |
+        rsync -av --delete --exclude='.git/' --exclude='.gitignore' --exclude='.github/' --exclude='local/' --exclude='/scripts/' --exclude='/PULL_REQUEST_TEMPLATE.md' --exclude='/AGENTS.md' --exclude='/README.md' repoA/ repoB/
+        echo "Installing Nuclei" | tee -a /dev/null
+        go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.11.1
+        cd repoB
+        python .github/download-prs.py
+        python .github/remove-blacklisted.py -t .
+        ln -s "$(pwd)" /home/runner/nuclei-templates
+        /home/runner/go/bin/nuclei -duc -validate -t "$(pwd)"
+
+    -
+      name: Push Changes to RepoB
+      run: |
+        cd repoB
+        git config --global user.name 'DrMeosch (Auto)'
+        git config --global user.email '51243387+DrMeosch@users.noreply.github.com'
+        git checkout -b "sync-nuclei-templates-${REPOA_SHA}"
+        git add .
+        # The -q flag makes grep quiet, returning only a success or failure status.
+        if git status | grep -q "nothing to commit"; then
+          echo "Nothing to commit, so no push will be done."
+        else
+          commit_message="[autosync] ${REPOA_MESSAGE} ${REPOA_SHA}"
+          git commit -m "$commit_message"
+          git push --set-upstream origin "sync-nuclei-templates-${REPOA_SHA}"
+          pr_body="$(printf 'This PR updates files from [nuclei-templates](https://github.com/projectdiscovery/nuclei-templates) repository.\n\nCommit Message: %s\nCommit SHA: %s' "${REPOA_MESSAGE}" "${REPOA_SHA}")"
+          gh pr create -B main -H "sync-nuclei-templates-${REPOA_SHA}" \
+            -a DrMeosch \
+            --title "[autosync] Update from nuclei-templates" \
+            --body "${pr_body}"
+        fi
+      env:
+        REPOA_MESSAGE: ${{ steps.repoA_info.outputs.message }}
+        REPOA_SHA: ${{ steps.repoA_info.outputs.sha }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

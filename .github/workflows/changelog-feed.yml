@@ -1,0 +1,40 @@
+name: Changelog feed
+
+# When a pull request is merged, append its "## Changelog" lines (see scripts/check_changelog.py) as one comment to
+# the running, pinned "Changelog" issue (scripts/changelog_feed.py). A "none" section adds nothing.
+#
+# pull_request_target runs this workflow file and these scripts from the base branch, with a token that can write
+# issues. That is safe only because nothing from the pull request is executed: the job checks out the base branch
+# (the default ref of this event, never the pull request head) and the script reads the pull request body from the
+# API (GET /pulls/{number}) as data, so a body fixed after the merge is picked up by a re-run. Only pull requests
+# merged into the default branch (from the event) are fed. The workflow is repo-agnostic: it names no branch.
+#
+# Runs are not serialized: a concurrency group with a queue is rejected by the pinned actionlint, and each run is
+# independent thanks to the per-pull-request marker comment (a re-run skips a pull request already in the issue).
+# Two first runs racing to create the issue are reconciled by the script, which keeps the oldest issue.
+#
+# contents: read is only for the checkout of the base branch.
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] no PR code is checked out or run, see above
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  feed:
+    name: Append to the Changelog issue
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # check out the base branch scripts
+      issues: write # create, close and comment on the Changelog issue
+      pull-requests: read # read the pull request through the API
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Append the pull request to the Changelog issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/changelog_feed.py
